@@ -1,0 +1,117 @@
+theory NSLPfull
+/* Needham Schroeder Low Protocol, 
+ * We use a sources lemma to ensure termination
+ *
+ * Tom Chothia 2022
+ * Example of the FOSAD summer school
+ */
+
+begin
+
+builtins:   symmetric-encryption, asymmetric-encryption, xor
+
+/* A -> B : E_B(A, Na)  
+   B -> A : E_A(Na, Nb, B) 
+   A -> B : E_B(Nb)  
+   B -> A : { sec }(Na xor Nb) */
+
+restriction oneKeyPerAgent: 
+    "All ID pubkey pubkey2 #i #j. Created(ID,pubkey) @#i & Created(ID,pubkey2) @#j
+            ==> pubkey = pubkey2"
+
+rule SetUpKeys:
+    let pubkey = pk(~skey) in
+    [Fr(~skey)] --[ Created($ID,pubkey) ]-> 
+        [ !LtkPub($ID,pubkey), !LtkPriv($ID, ~skey), Out(pubkey) ]
+
+rule compromiseAgent:
+    [ !LtkPriv(ID,skey) ] --[ Compromised(ID) ]-> [Out(skey)]
+
+rule Initiator_1:
+    [ 
+        !LtkPriv(ID_A, skey_A),
+        !LtkPub(ID_B, pubkey_B), 
+        Fr(~Na) 
+    ] --[ I_1(~Na) ]-> [ 
+        Out( aenc{'1',~Na,ID_A}pubkey_B ),
+        State_I1( ID_A, ID_B, ~Na)
+    ]
+
+rule Responder_1:
+    [ 
+        !LtkPub(ID_A, pubkey_A), !LtkPub(ID_B, pubkey_B), 
+        In( aenc{'1', Na, ID_A}pubkey_B ),
+        Fr(~Nb) 
+    ] --[ R_1(Na,~Nb) ]-> [ 
+        Out( aenc{ '2',Na, ~Nb, ID_B}pubkey_A ),
+        State_R1( ID_A, ID_B, Na, ~Nb)
+    ]
+
+rule Initiator_2:
+    [ 
+        State_I1( ID_A, ID_B, Na),
+        !LtkPub(ID_A, pubkey_A),
+        !LtkPub(ID_B, pubkey_B), 
+        In( aenc{'2', Na, Nb, ID_B}pubkey_A )
+    ] --[ I_2(Nb), I_Commited(ID_A, ID_B, Na, Nb)]-> [ 
+        Out( aenc{ '3',Nb }pubkey_B ),
+        State_I2( ID_A, ID_B, Na, Nb)
+    ]
+
+rule Responder_2:
+    let sessionKey = Na XOR Nb in
+    [ 
+        State_R1( ID_A, ID_B, Na, Nb),
+        !LtkPub(ID_B, pubkey_B), 
+        In( aenc{ '3', Nb }pubkey_B ),
+        Fr(~sec)
+    ] --[ Secret_R(~sec,ID_A,ID_B), R_uses(Na,Nb),  R_finished(ID_A, ID_B, Na, Nb, ~sec) ]-> [ 
+        Out( senc{~sec}sessionKey )
+    ]
+
+rule Initiator_3:
+    let sessionKey = Na XOR Nb in
+    [ 
+        State_I2( ID_A, ID_B, Na, Nb),
+        In( senc{sec}sessionKey )
+    ] --[ I_finished(ID_A, ID_B, Na, Nb, sec)]-> [ ]
+
+
+
+lemma types [sources]:
+  "(All Nb #i. I_2(Nb)@i ==> (Ex #j Na. R_1(Na,Nb)@j) | (Ex #k. KU(Nb)@k & #k < #i))
+  & (All Na Nb #i. R_1(Na,Nb)@i ==> (Ex #j. I_1(Na)@j) |  (Ex #k. KU(Na)@k & #k < #i))"
+
+lemma finishes:
+exists-trace
+  "Ex ID_A ID_B Na Nb sec #i .
+   I_finished(ID_A, ID_B, Na, Nb, sec)@i 
+        & not( Ex #j. Compromised(ID_A)@j) & (Ex #k. Compromised(ID_B)@k)"
+
+lemma secrecy:
+    "not (Ex sec ID_A ID_B #i #j.  Secret_R(sec,ID_A,ID_B)@i & KU(sec)@j
+           & not( Ex #l. Compromised(ID_A)@l) & not(Ex #k. Compromised(ID_B)@k))"
+
+lemma auth_for_I:
+"All ID_A ID_B Na Nb sec #i. 
+    (I_finished(ID_A, ID_B, Na, Nb, sec)@i 
+     & not( Ex #l. Compromised(ID_A)@l) 
+     & not(Ex #k. Compromised(ID_B)@k) )
+       ==> Ex #j. R_finished(ID_A, ID_B, Na, Nb, sec)@j & j < i" 
+
+lemma auth_for_R:
+"All ID_A ID_B Na Nb sec #i. 
+    (R_finished(ID_A, ID_B, Na, Nb, sec)@i 
+     & not( Ex #l. Compromised(ID_A)@l) 
+     & not(Ex #k. Compromised(ID_B)@k) )
+       ==> Ex #j. I_Commited(ID_A, ID_B, Na, Nb)@j & j < i" 
+
+lemma forward_Secrecy:
+"All ID_A ID_B Na Nb sec #j. 
+  ( R_finished(ID_A, ID_B, Na, Nb, sec)@j 
+    & not( Ex #l. Compromised(ID_A)@l & l <j )
+    & not( Ex #k. Compromised(ID_B)@k & k <j ) )
+       ==>  not( Ex #i. KU(sec)@i)"
+
+
+end

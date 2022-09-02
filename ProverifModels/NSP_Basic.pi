@@ -1,0 +1,60 @@
+
+(* NSP example model  *)
+(* Tom Chothia 2022 *)
+(* Example for the FOSAD summer school *)
+(* N.B. all agents honest, therefore no attack *)
+
+(* A -> B : E_B(A, Na)  *)
+(* B -> A : E_A(Na, Nb) *)
+(* A -> B : E_B(Nb)  *)
+(* B -> A : { sec }(Na xor Nb) *)
+
+free c.
+
+(* Shared key cryptography *)
+fun senc/2.
+reduc sdec(y, senc(y,x)) = x.
+
+(* Public key cryptography *)
+fun penc/2.
+fun pk/1.
+reduc pdec(penc(x,pk(y)),y) = x.
+
+fun xor/2.
+
+query attacker:sec. (* Test is the attacker can learn secret encrypted with the key *)
+query ev:Responder_B_Finishes(x).
+query ev:Initiator_A_Finishes(x).
+
+query evinj:Initiator_A_Finishes(x) ==> evinj:Responder_B_Sends(x).
+
+
+let Initiator_A = 
+    new Na;
+    out (c, penc((pubA, Na),pubB));
+	in (c,messageI1);
+    let (=Na,Nb) = pdec(messageI1,skA)  in  (* "=Na" is the same as N ... if N=Na then *)
+    out (c,penc(Nb,pubB));
+    in (c,messageI3);
+    let sec = sdec(xor(Na,Nb),messageI3) in
+    event Initiator_A_Finishes(sec).
+	    
+let Responder_B = 
+	in(c,messageR1);
+    let (=pubA,Na) = pdec(messageR1,skB) in
+    new Nb;
+    out(c,penc((Na,Nb),pubA));
+    in(c,messageR2);
+    let =Nb = pdec(messageR2,skB) in       (* N.B. "let (=Nb) = pdec(messageR2,skB) in" always fails! Brackets matter *)
+    new sec;
+    event Responder_B_Sends(sec);
+    out(c,senc(xor(Na,Nb),sec));    
+    event Responder_B_Finishes(sec).
+
+process new msk;
+	!new skA; new skB; 
+    let pubA = pk(skA) in
+	let pubB = pk(skB) in 
+    out(c,pubA); out (c,pubB); (* attacker should know these, so we send them out *)
+	( !Initiator_A | !Responder_B)
+

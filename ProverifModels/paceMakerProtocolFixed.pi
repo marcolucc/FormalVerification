@@ -1,0 +1,48 @@
+(* Secure IMD protocol  *)
+free c.
+
+(* bilinear pairings *)
+
+fun power/2.  (* power(x,y) = x^y *)
+fun powere/3. (* powere(a,b,x) = e(a,b)^x *)
+fun prod/2.   (* prod(a,b) = a x b *)
+fun e/2.      (* e(a^x,b^y) = e(a,b)^(xy)*)
+
+equation e(power(a,x),power(b,y)) = powere(a,b, prod(x,y)).
+equation prod(x,y) = prod(y,x).
+
+data one/0.
+
+(* hashes *)
+fun H1/1.
+fun H2/1.
+
+(* Shared key cryptography *)
+fun senc/2.
+reduc sdec(y, senc(y,x)) = x.
+
+private free sec.
+private free msk.
+
+query attacker:sec. (* Test is the attacker can learn secret encrypted with the key *)
+
+let Reader = in (c,imdID);
+	     let rkey = e(rsec,power(H2(imdID),one)) in
+	     in(c,message);
+	     out(c,senc(rkey,sec)).
+	    
+let IMD = let imdkey = e(power(H1(t),one),psec) in
+	  out(c,id);
+	  out (c,senc(imdkey,sec)).
+
+let CompromisedReader = new t'; out(c,t');out(c,power(H1(t'),msk)).
+
+let CompromisedUnAuthIMD = new id'; out (c,id');out(c,power(H2(id'),msk)).
+
+process new msk;
+	!new t; out(c,t);
+        !new id; out(c,id);
+	(   let psec = power(H2(id),msk) in !IMD
+	  | let rsec = power(H1(t),msk) in !Reader
+	  | !CompromisedReader )
+

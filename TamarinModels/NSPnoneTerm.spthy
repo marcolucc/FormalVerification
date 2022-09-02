@@ -1,0 +1,85 @@
+theory NSPnoneTerm
+/* Needham Schroeder Protocol, 
+ * In this version all parties are honest so no attack found
+ * We use a sources lemma to ensure termination
+ *
+ * Tom Chothia 2022
+ * Example of the FOSAD summer school
+ */
+
+begin
+
+builtins:   symmetric-encryption, asymmetric-encryption, xor
+
+/* A -> B : E_B(A, Na)  
+   B -> A : E_A(Na, Nb) 
+   A -> B : E_B(Nb)  
+   B -> A : { sec }(Na xor Nb) */
+
+restriction oneKeyPerAgent: 
+    "All ID pubkey pubkey2 #i #j. Created(ID,pubkey) @#i & Created(ID,pubkey2) @#j
+            ==> pubkey = pubkey2"
+
+rule SetUpKeys:
+    let pubkey = pk(~skey) in
+    [Fr(~skey)] --[ Created($ID,pubkey) ]-> 
+        [ !LtkPub($ID,pubkey), !LtkPriv($ID, ~skey), Out(pubkey) ]
+
+rule Initiator_1:
+    [ 
+        !LtkPriv(ID_A, skey_A),
+        !LtkPub(ID_B, pubkey_B), 
+        Fr(~Na) 
+    ] --[ I_1(~Na) ]-> [ 
+        Out( aenc{'1',~Na,ID_A}pubkey_B ),
+        State_I1( ID_A, ID_B, ~Na)
+    ]
+
+rule Responder_1:
+    [ 
+        !LtkPub(ID_A, pubkey_A), !LtkPub(ID_B, pubkey_B), 
+        In( aenc{'1', Na, ID_A}pubkey_B ),
+        Fr(~Nb) 
+    ] --[ R_1(Na,~Nb) ]-> [ 
+        Out( aenc{ '2',Na, ~Nb}pubkey_A ),
+        State_R1( ID_A, ID_B, Na, ~Nb)
+    ]
+
+
+rule Initiator_2:
+    [ 
+        State_I1( ID_A, ID_B, Na),
+        !LtkPub(ID_A, pubkey_A),
+        !LtkPub(ID_B, pubkey_B), 
+        In( aenc{'2',Na, Nb}pubkey_A )
+    ] --[ I_2(Nb), I_uses(Na,Nb), I_Commited(ID_A, ID_B, Na, Nb) ]-> [ 
+        Out( aenc{ '3',Nb }pubkey_B ),
+        State_I2( ID_A, ID_B, Na, Nb)
+    ]
+
+rule Responder_2:
+    let sessionKey = Na XOR Nb in
+    [ 
+        State_R1( ID_A, ID_B, Na, Nb),
+        !LtkPub(ID_B, pubkey_B), 
+        In( aenc{ '3', Nb }pubkey_B ),
+        Fr(~sec)
+    ] --[ Secret(~sec), R_uses(Na,Nb), R_finished(ID_A, ID_B, Na, Nb, ~sec) ]-> [ 
+        Out( senc{~sec}sessionKey )
+    ]
+
+rule Initiator_3:
+    let sessionKey = Na XOR Nb in
+    [ 
+        State_I2( ID_A, ID_B, Na, Nb),
+        In( senc{sec}sessionKey )
+    ] --[ I_finished(ID_A, ID_B, Na, Nb, sec)]-> [ ]
+
+lemma finishes:
+exists-trace
+  "Ex ID_A ID_B Na Nb sec #i.
+   I_finished(ID_A, ID_B, Na, Nb, sec)@i"
+
+
+
+end

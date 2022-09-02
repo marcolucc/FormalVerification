@@ -1,0 +1,38 @@
+theory Lec1example
+/* Protocol example from lecture 1, 
+ *
+ * Tom Chothia 2022
+ * Example of the FOSAD summer school
+ */
+
+begin
+
+builtins:   symmetric-encryption
+
+/* A -> B : A  
+   B -> A : Nb 
+   A -> B : {Nb,m}Kab  
+*/
+
+rule SetUpKeys:
+    [Fr(~keyAB)] --[ Created($A,$B,~keyAB) ]-> [ !Ltk($A,$B,~keyAB) ]
+
+rule A_1:
+    [ !Ltk($A,$B,keyAB) ] --> [  Out( $A ) ]
+
+rule B_1:
+    [ !Ltk($A,$B,keyAB), In( $A ), Fr(~Nb) ] --> [ Out( ~Nb ), State_B1(~Nb, $A) ]
+
+rule A_2:
+    [ !Ltk($A,$B,keyAB), In (Nb), Fr(~message) ]
+          --[ MessageSent(~message) ]-> [Out( senc{Nb, ~message}keyAB ) ]
+
+rule B_2:
+    [ !Ltk($A,$B,keyAB), In (senc{Nb,message}keyAB) ] --> [ ]
+
+lemma messageSecrecy:
+    "All message #i. MessageSent(message)@i ==> not(Ex #j.KU(message)@j)"
+
+
+
+end

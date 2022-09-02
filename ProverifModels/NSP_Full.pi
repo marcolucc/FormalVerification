@@ -1,0 +1,61 @@
+
+(* NSP example model  *)
+(* Tom Chothia 2022 *)
+(* Example for the FOSAD summer school *)
+
+(* A -> B : E_B(A, Na)  *)
+(* B -> A : E_A(Na, Nb) *)
+(* A -> B : E_B(Nb)  *)
+(* B -> A : { sec }(Na xor Nb) *)
+
+
+free c.
+
+(* Shared key cryptography *)
+fun senc/2.
+reduc sdec(y, senc(y,x)) = x.
+
+(* Public key cryptography *)
+fun penc/2.
+fun pk/1.
+reduc pdec(penc(x,pk(y)),y) = x.
+
+fun xor/2.
+
+query attacker:sec. (* Test is the attacker can learn secret encrypted with the key *)
+query ev:Responder_B_Finishes(x).
+query ev:Initiator_A_Finishes(x).
+
+query evinj:Initiator_A_Finishes(x) ==> evinj:Responder_B_Sends(x).
+
+
+let Initiator_A = 
+    in (c, pubR); (* Attacker decides who A will talk to *)
+    new Na;
+    out (c, penc((pubA, Na),pubR));
+	in (c,messageI1);
+    let (=Na,Nr) = pdec(messageI1,skA)  in
+    out (c,penc(Nr,pubR));
+    in (c,messageI3);
+    let sec = sdec(xor(Na,Nr),messageI3) in
+    event Initiator_A_Finishes(sec).
+	    
+let Responder_B = 
+	in(c,messageR1);
+    let (pubI,Ni) = pdec(messageR1,skB) in
+    new Nb;
+    out(c,penc((Ni,Nb),pubI));
+    in(c,messageR2); 
+    let =Nb = pdec(messageR2,skB) in       (* N.B. let (=Nb) = pdec(messageR2,skB) in always fails *)
+    new sec;
+    event Responder_B_Sends(sec);
+    out(c,senc(xor(Ni,Nb),sec));    
+    event Responder_B_Finishes(messageR1).
+
+process new msk;
+	!new skA; new skB; 
+    let pubA = pk(skA) in
+	let pubB = pk(skB) in 
+    out(c,pubA); out (c,pubB);
+	( !Initiator_A | !Responder_B)
+
